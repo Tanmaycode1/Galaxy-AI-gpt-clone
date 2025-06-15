@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Send, Paperclip, X, Edit2, Trash2, Check, X as XIcon, ImageIcon, Loader2 } from 'lucide-react';
 import { ModelSelector } from './ModelSelector';
 import { Message } from 'ai';
+import Image from 'next/image';
 
 interface ChatInterfaceProps {
   user?: {
@@ -357,8 +358,14 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
                     }`}
                   >
                     {message.role === 'assistant' && (
-                      <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center text-white text-sm font-medium">
-                        AI
+                      <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center overflow-hidden">
+                        <Image
+                          src="/icons/favicon.ico"
+                          alt="Galaxy AI"
+                          width={32}
+                          height={32}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     )}
                     
@@ -464,8 +471,14 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
               
               {(status === 'submitted') && (
                 <div className="flex gap-4 justify-start">
-                  <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center text-white text-sm font-medium">
-                    AI
+                  <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center overflow-hidden">
+                    <Image
+                      src="/icons/favicon.ico"
+                      alt="Galaxy AI"
+                      width={32}
+                      height={32}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="bg-muted rounded-2xl px-4 py-3 max-w-2xl">
                     <div className="flex space-x-1">

@@ -22,6 +22,7 @@ import {
   X,
   User
 } from 'lucide-react';
+import Image from 'next/image';
 
 export default function ChatPage() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -193,8 +194,14 @@ export default function ChatPage() {
           <div className={`${isCollapsed ? 'p-2' : 'p-4'} border-b border-border flex-shrink-0`}>
             <div className="flex items-center justify-between min-w-0">
               <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'space-x-3'} min-w-0 flex-1`}>
-                <div className={`${isCollapsed ? 'w-6 h-6' : 'w-8 h-8'} bg-gradient-to-br from-[#10a37f] to-[#0d8f6e] rounded-lg flex items-center justify-center flex-shrink-0 transition-all`}>
-                  <Sparkles className={`${isCollapsed ? 'w-3 h-3' : 'w-4 h-4'} text-white`} />
+                <div className={`${isCollapsed ? 'w-6 h-6' : 'w-8 h-8'} bg-gradient-to-br from-[#10a37f] to-[#0d8f6e] rounded-lg flex items-center justify-center flex-shrink-0 transition-all p-1`}>
+                  <Image
+                    src="/icons/favicon.ico"
+                    alt="Galaxy AI"
+                    width={isCollapsed ? 16 : 20}
+                    height={isCollapsed ? 16 : 20}
+                    className="rounded-sm"
+                  />
                 </div>
                 {!isCollapsed && (
                   <span className="font-semibold text-foreground truncate">

@@ -15,6 +15,7 @@ import {
   User,
   Bot
 } from 'lucide-react';
+import Image from 'next/image';
 import { format, isToday, isYesterday, isThisWeek, isThisMonth, subDays } from 'date-fns';
 
 interface Message {
@@ -223,6 +224,17 @@ export function ChatHistory({
   if (isCollapsed) {
     return (
       <div className="flex flex-col h-full">
+        {/* Logo Header - Collapsed */}
+        <div className="p-2 flex justify-center">
+          <Image
+            src="/icons/favicon.ico"
+            alt="Galaxy AI"
+            width={20}
+            height={20}
+            className="rounded-sm"
+          />
+        </div>
+        
         {/* New Chat Button - Collapsed */}
         <div className="p-2">
           <button
