@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
             };
             
             // Append only the last message to existing chat using $push
-            await Chat.findByIdAndUpdate(
+            await (Chat as any).findByIdAndUpdate(
               currentChatId,
               { 
                 $push: { messages: messageToAdd },
