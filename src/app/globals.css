@@ -1,0 +1,229 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+    
+    /* ChatGPT specific variables */
+    --chat-background: 0 0% 100%;
+    --sidebar-background: 0 0% 98%;
+    --message-user-background: 212 100% 97%;
+    --message-assistant-background: 0 0% 96%;
+    --hover-background: 0 0% 96%;
+    --chatgpt-green: 153 88% 35%;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    
+    /* ChatGPT dark theme variables */
+    --chat-background: 212 4% 12%;
+    --sidebar-background: 215 6% 10%;
+    --message-user-background: 215 6% 15%;
+    --message-assistant-background: 212 4% 12%;
+    --hover-background: 0 0% 14.9%;
+    --chatgpt-green: 153 88% 35%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Selection styling */
+  ::selection {
+    @apply bg-primary/20;
+  }
+
+  /* Focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  /* ChatGPT specific components */
+  .chat-container {
+    @apply min-h-screen bg-[hsl(var(--chat-background))];
+  }
+
+  .sidebar {
+    @apply bg-[hsl(var(--sidebar-background))] border-r border-border;
+  }
+
+  .message-user {
+    @apply bg-[hsl(var(--message-user-background))] rounded-lg p-4 max-w-none;
+  }
+
+  .message-assistant {
+    @apply bg-[hsl(var(--message-assistant-background))] rounded-lg p-4 max-w-none;
+  }
+
+  .message-content {
+    @apply prose prose-sm dark:prose-invert max-w-none;
+  }
+
+  .message-content pre {
+    @apply bg-muted rounded-md p-4 overflow-x-auto;
+  }
+
+  .message-content code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-sm;
+  }
+
+  .message-content pre code {
+    @apply bg-transparent p-0;
+  }
+
+  /* Animation classes */
+  .typing-animation {
+    @apply animate-pulse;
+  }
+
+  .fade-in {
+    @apply animate-fade-in;
+  }
+
+  /* Hover effects */
+  .hover-lift {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  .hover-bg {
+    @apply transition-colors duration-200 hover:bg-[hsl(var(--hover-background))];
+  }
+
+  /* Button variants */
+  .btn-chatgpt {
+    @apply bg-[hsl(var(--chatgpt-green))] text-white hover:bg-[hsl(var(--chatgpt-green))]/90 
+           focus:ring-[hsl(var(--chatgpt-green))]/50 transition-colors duration-200;
+  }
+
+  /* File upload area */
+  .upload-zone {
+    @apply border-2 border-dashed border-border rounded-lg p-8 text-center
+           hover:border-primary/50 transition-colors duration-200;
+  }
+
+  .upload-zone.drag-over {
+    @apply border-primary bg-primary/5;
+  }
+
+  /* Loading spinner */
+  .spinner {
+    @apply animate-spin w-4 h-4 border-2 border-current border-r-transparent rounded-full;
+  }
+
+  /* Chat input */
+  .chat-input {
+    @apply resize-none border-0 outline-none bg-transparent p-4 
+           placeholder:text-muted-foreground focus:ring-0;
+  }
+
+  /* Markdown content styling */
+  .markdown-content {
+    @apply leading-relaxed;
+  }
+
+  .markdown-content h1,
+  .markdown-content h2,
+  .markdown-content h3,
+  .markdown-content h4,
+  .markdown-content h5,
+  .markdown-content h6 {
+    @apply font-semibold mt-6 mb-4 first:mt-0;
+  }
+
+  .markdown-content p {
+    @apply mb-4 last:mb-0;
+  }
+
+  .markdown-content ul,
+  .markdown-content ol {
+    @apply ml-6 mb-4;
+  }
+
+  .markdown-content li {
+    @apply mb-2;
+  }
+
+  .markdown-content blockquote {
+    @apply border-l-4 border-border pl-4 italic my-4;
+  }
+
+  .markdown-content table {
+    @apply w-full border-collapse border border-border my-4;
+  }
+
+  .markdown-content th,
+  .markdown-content td {
+    @apply border border-border p-2 text-left;
+  }
+
+  .markdown-content th {
+    @apply bg-muted font-semibold;
+  }
+} 

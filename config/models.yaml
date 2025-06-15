@@ -1,0 +1,87 @@
+models:
+  openai:
+    gpt-4-turbo:
+      name: "GPT-4 Turbo"
+      provider: "openai"
+      model_id: "gpt-4o"
+      image: true
+      max_tokens: 4096
+      context_window: 128000
+      pricing:
+        input: 0.01
+        output: 0.03
+      description: "Most capable GPT-4 model with vision capabilities"
+      
+    gpt-4:
+      name: "GPT-4"
+      provider: "openai"
+      model_id: "gpt-4"
+      image: false
+      max_tokens: 4096
+      context_window: 8192
+      pricing:
+        input: 0.03
+        output: 0.06
+      description: "High-intelligence flagship model"
+      
+    gpt-3.5-turbo:
+      name: "GPT-3.5 Turbo"
+      provider: "openai"
+      model_id: "gpt-3.5-turbo"
+      image: false
+      max_tokens: 4096
+      context_window: 16384
+      pricing:
+        input: 0.0015
+        output: 0.002
+      description: "Fast, inexpensive model for simple tasks"
+
+  anthropic:
+    claude-3-opus:
+      name: "Claude 3 Opus"
+      provider: "anthropic"
+      model_id: "claude-3-opus-20240229"
+      image: true
+      max_tokens: 4096
+      context_window: 200000
+      pricing:
+        input: 0.015
+        output: 0.075
+      description: "Most powerful Claude model with vision"
+      
+    claude-3-sonnet:
+      name: "Claude 3 Sonnet"
+      provider: "anthropic"
+      model_id: "claude-3-sonnet-20240229"
+      image: true
+      max_tokens: 4096
+      context_window: 200000
+      pricing:
+        input: 0.003
+        output: 0.015
+      description: "Balanced performance and speed with vision"
+      
+    claude-3-haiku:
+      name: "Claude 3 Haiku"
+      provider: "anthropic"
+      model_id: "claude-3-haiku-20240307"
+      image: true
+      max_tokens: 4096
+      context_window: 200000
+      pricing:
+        input: 0.00025
+        output: 0.00125
+      description: "Fastest Claude model with vision"
+
+default_model: "gpt-4-turbo"
+image_upload_enabled: true
+max_file_size_mb: 10
+supported_file_types:
+  - "image/jpeg"
+  - "image/jpg"
+  - "image/png"
+  - "image/gif"
+  - "image/webp"
+  - "application/pdf"
+  - "text/plain"
+  - "text/markdown" 
