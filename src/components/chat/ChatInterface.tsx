@@ -42,6 +42,9 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
   
 
 
+  // Store the latest chat ID from response headers
+  const latestChatIdRef = useRef<string | null>(null);
+
   const {
     messages,
     input,
@@ -61,17 +64,46 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     },
     onResponse: async (response) => {
       const newChatId = response.headers.get('x-chat-id');
-      if (newChatId && !currentChatId) {
-        setCurrentChatId(newChatId);
-        onChatCreated?.(newChatId);
+      console.log('DEBUG onResponse:', {
+        hasNewChatId: !!newChatId,
+        newChatId,
+        currentChatId,
+        willSetChatId: !!(newChatId && !currentChatId)
+      });
+      
+      if (newChatId) {
+        // Store in ref for immediate access in onFinish
+        latestChatIdRef.current = newChatId;
+        
+        if (!currentChatId) {
+          console.log('DEBUG: Setting currentChatId to:', newChatId);
+          setCurrentChatId(newChatId);
+          onChatCreated?.(newChatId);
+        }
       }
     },
     onFinish: async (message) => {
       // Files are already cleared in onSubmit, don't clear again here
       
-      if (currentChatId && message) {
+      // Use the latest chat ID from ref or current state
+      const chatIdToUse = latestChatIdRef.current || currentChatId;
+      
+      console.log('DEBUG onFinish:', {
+        hasCurrentChatId: !!currentChatId,
+        currentChatId,
+        hasLatestChatId: !!latestChatIdRef.current,
+        latestChatId: latestChatIdRef.current,
+        chatIdToUse,
+        hasMessage: !!message,
+        messageId: message?.id,
+        messageRole: message?.role,
+        messageContent: message?.content?.substring(0, 50)
+      });
+      
+      if (chatIdToUse && message) {
         try {
-          await fetch(`/api/chats/${currentChatId}`, {
+          console.log('DEBUG: Attempting to save assistant message via PATCH');
+          const response = await fetch(`/api/chats/${chatIdToUse}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -80,16 +112,23 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
                 role: message.role,
                 content: message.content,
                 timestamp: new Date(),
-
               }
             }),
           });
+          
+          if (!response.ok) {
+            console.error('PATCH request failed:', response.status, response.statusText);
+            const errorText = await response.text();
+            console.error('PATCH error response:', errorText);
+          } else {
+            console.log('DEBUG: Successfully saved assistant message via PATCH');
+          }
         } catch (error) {
           console.error('Failed to save chat after streaming:', error);
         }
+      } else {
+        console.log('DEBUG: Skipping onFinish save - missing chatId or message');
       }
-      
-
     },
     onError: (error) => {
       console.error('useChat onError:', error);
