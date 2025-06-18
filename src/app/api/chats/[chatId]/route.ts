@@ -138,6 +138,59 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       });
     }
 
+    if (updateData.updateMessage !== undefined) {
+      // Update a specific message by ID
+      const { id, content } = updateData.updateMessage;
+      
+      const updatedChat = await Chat.findOneAndUpdate(
+        { 
+          _id: chatId, 
+          userId: authResult.userId,
+          'messages.id': id 
+        },
+        { 
+          $set: { 
+            'messages.$.content': content,
+            'messages.$.timestamp': new Date()
+          },
+          updatedAt: new Date()
+        },
+        { new: true, runValidators: true }
+      ).lean();
+
+      if (!updatedChat) {
+        return NextResponse.json({ error: 'Chat or message not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        ...updatedChat,
+        _id: (updatedChat as any)._id.toString(),
+      });
+    }
+
+    if (updateData.deleteMessages !== undefined) {
+      // Delete specific messages by IDs
+      const messageIds = updateData.deleteMessages;
+      
+      const updatedChat = await Chat.findOneAndUpdate(
+        { _id: chatId, userId: authResult.userId },
+        { 
+          $pull: { messages: { id: { $in: messageIds } } },
+          updatedAt: new Date()
+        },
+        { new: true, runValidators: true }
+      ).lean();
+
+      if (!updatedChat) {
+        return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        ...updatedChat,
+        _id: (updatedChat as any)._id.toString(),
+      });
+    }
+
     if (updateData.modelId !== undefined) {
       updateObject.modelId = updateData.modelId;
     }

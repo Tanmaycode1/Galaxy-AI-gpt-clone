@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useChat } from 'ai/react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-
-import { Send, Paperclip, X, Edit2, Trash2, Check, X as XIcon, ImageIcon, Loader2 } from 'lucide-react';
+import { Send, Paperclip, X, Settings, Copy, Loader2, RotateCcw, Edit, Trash2, Globe, RefreshCw } from 'lucide-react';
 import { ModelSelector } from './ModelSelector';
 import { Message } from 'ai';
 import Image from 'next/image';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface ChatInterfaceProps {
   user?: {
@@ -24,23 +26,160 @@ interface UploadedFile {
   url: string;
   name: string;
   type: string;
-  size?: number;
+  size: number;
+  file?: File;
+  uploading?: boolean;
 }
+
+// Image Modal Component
+const ImageModal = ({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="relative max-w-4xl max-h-4xl p-4">
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-colors z-10"
+        >
+          <X className="w-4 h-4" />
+        </button>
+        <img
+          src={src}
+          alt={alt}
+          className="max-w-full max-h-full object-contain rounded-lg"
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    </div>
+  );
+};
+
+// PDF Modal Component
+const PDFModal = ({ src, name, onClose }: { src: string; name: string; onClose: () => void }) => {
+  const [pdfError, setPdfError] = React.useState(false);
+  const [useProxy, setUseProxy] = React.useState(false);
+  
+  // Create proxy URL for PDF viewing
+  const getProxyUrl = (originalUrl: string) => {
+    return `/api/pdf-proxy?url=${encodeURIComponent(originalUrl)}`;
+  };
+  
+  // Try different PDF viewing methods
+  const tryAlternativeViewer = () => {
+    // Try using Google Docs viewer as fallback
+    const googleDocsUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(src)}&embedded=true`;
+    return googleDocsUrl;
+  };
+  
+  React.useEffect(() => {
+    // Check if this is a raw PDF from Cloudinary - these need special handling
+    if (src.includes('/raw/upload/')) {
+      console.log('Raw PDF detected, using proxy for viewing');
+      setUseProxy(true);
+    } else {
+      // First try direct access, then fall back to proxy
+      const checkPdfAccess = async () => {
+        try {
+          const response = await fetch(src, { method: 'HEAD' });
+          if (!response.ok && (response.status === 401 || response.status === 403)) {
+            console.log('PDF direct access denied, trying proxy');
+            setUseProxy(true);
+          }
+        } catch (error) {
+          console.log('Error checking PDF access, trying proxy:', error);
+          setUseProxy(true);
+        }
+      };
+      
+      checkPdfAccess();
+    }
+  }, [src]);
+  
+  const pdfUrl = useProxy ? getProxyUrl(src) : src;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="relative w-full h-full max-w-6xl max-h-6xl p-4">
+        <button
+          onClick={onClose}
+          className="absolute top-6 right-6 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white transition-colors z-10"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div className="w-full h-full bg-white rounded-lg overflow-hidden">
+          {pdfError ? (
+            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+              <div className="text-6xl mb-4">📄</div>
+              <h3 className="text-xl font-semibold mb-2 text-gray-800">PDF Preview Not Available</h3>
+              <p className="text-gray-600 mb-4">Unable to preview this PDF due to access restrictions.</p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    window.open(tryAlternativeViewer(), '_blank');
+                  }}
+                  className="block w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors"
+                >
+                  Try Google Docs Viewer
+                </button>
+                <a 
+                  href={src} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+                >
+                  Open PDF in New Tab
+                </a>
+                <a 
+                  href={src} 
+                  download={name}
+                  className="block bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors"
+                >
+                  Download PDF
+                </a>
+              </div>
+            </div>
+          ) : (
+            <iframe
+              src={pdfUrl}
+              className="w-full h-full"
+              title={name}
+              onClick={(e) => e.stopPropagation()}
+              onError={() => {
+                console.log('PDF iframe failed to load:', pdfUrl);
+                if (!useProxy) {
+                  console.log('Trying proxy instead...');
+                  setUseProxy(true);
+                } else {
+                  setPdfError(true);
+                }
+              }}
+              onLoad={(e) => {
+                console.log('PDF iframe loaded successfully:', pdfUrl);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: ChatInterfaceProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('gpt-4-turbo');
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState<string>('');
+  const [selectedFiles, setSelectedFiles] = useState<UploadedFile[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string>(chatId || '');
   const [models, setModels] = useState<any[]>([]);
+  const [modalImage, setModalImage] = useState<{ src: string; alt: string } | null>(null);
+  const [modalPdf, setModalPdf] = useState<{ src: string; name: string } | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [showRegenerateOptions, setShowRegenerateOptions] = useState<string | null>(null);
+  const [showToolsDropdown, setShowToolsDropdown] = useState<boolean>(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
-  
-
+  const inputAreaRef = useRef<HTMLDivElement>(null);
+  const [inputAreaHeight, setInputAreaHeight] = useState<number>(0);
 
   // Store the latest chat ID from response headers
   const latestChatIdRef = useRef<string | null>(null);
@@ -55,6 +194,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     setMessages,
     reload,
     status,
+    append,
   } = useChat({
     api: '/api/chat',
     body: {
@@ -64,45 +204,21 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     },
     onResponse: async (response) => {
       const newChatId = response.headers.get('x-chat-id');
-      console.log('DEBUG onResponse:', {
-        hasNewChatId: !!newChatId,
-        newChatId,
-        currentChatId,
-        willSetChatId: !!(newChatId && !currentChatId)
-      });
       
       if (newChatId) {
-        // Store in ref for immediate access in onFinish
         latestChatIdRef.current = newChatId;
         
         if (!currentChatId) {
-          console.log('DEBUG: Setting currentChatId to:', newChatId);
           setCurrentChatId(newChatId);
           onChatCreated?.(newChatId);
         }
       }
     },
     onFinish: async (message) => {
-      // Files are already cleared in onSubmit, don't clear again here
-      
-      // Use the latest chat ID from ref or current state
       const chatIdToUse = latestChatIdRef.current || currentChatId;
-      
-      console.log('DEBUG onFinish:', {
-        hasCurrentChatId: !!currentChatId,
-        currentChatId,
-        hasLatestChatId: !!latestChatIdRef.current,
-        latestChatId: latestChatIdRef.current,
-        chatIdToUse,
-        hasMessage: !!message,
-        messageId: message?.id,
-        messageRole: message?.role,
-        messageContent: message?.content?.substring(0, 50)
-      });
       
       if (chatIdToUse && message) {
         try {
-          console.log('DEBUG: Attempting to save assistant message via PATCH');
           const response = await fetch(`/api/chats/${chatIdToUse}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -115,29 +231,16 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
               }
             }),
           });
-          
-          if (!response.ok) {
-            console.error('PATCH request failed:', response.status, response.statusText);
-            const errorText = await response.text();
-            console.error('PATCH error response:', errorText);
-          } else {
-            console.log('DEBUG: Successfully saved assistant message via PATCH');
-          }
         } catch (error) {
           console.error('Failed to save chat after streaming:', error);
         }
-      } else {
-        console.log('DEBUG: Skipping onFinish save - missing chatId or message');
       }
     },
     onError: (error) => {
       console.error('useChat onError:', error);
-      // Clear uploaded files on error too
-      setUploadedFiles([]);
+      setSelectedFiles([]);
     },
   });
-
-
 
   // Load models on mount
   useEffect(() => {
@@ -167,7 +270,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     } else if (!chatId && currentChatId) {
       setMessages([]);
       setCurrentChatId('');
-      setUploadedFiles([]);
+      setSelectedFiles([]);
     }
   }, [chatId, currentChatId]);
 
@@ -176,14 +279,6 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
       const response = await fetch(`/api/chats/${chatIdToLoad}`);
       if (response.ok) {
         const chatData = await response.json();
-
-        console.log('Loading chat messages:', chatData.messages?.map((msg: any) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content.substring(0, 30),
-          hasAttachments: !!(msg.attachments?.length),
-          attachmentCount: msg.attachments?.length || 0
-        })));
         setMessages(chatData.messages || []);
         setSelectedModelId(chatData.modelId || 'gpt-4-turbo');
         setCurrentChatId(chatIdToLoad);
@@ -198,451 +293,1054 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-resize textarea
+  // Auto-resize textarea and update input area height
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [input]);
+    
+    // Update input area height for dynamic spacing
+    if (inputAreaRef.current) {
+      const height = inputAreaRef.current.offsetHeight;
+      setInputAreaHeight(height);
+    }
+  }, [input, selectedFiles]);
 
-  // Auto-resize edit textarea
+  // Close regenerate options and tools dropdown when clicking outside
   useEffect(() => {
-    if (editTextareaRef.current) {
-      editTextareaRef.current.style.height = 'auto';
-      editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
-    }
-  }, [editingContent]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showRegenerateOptions) {
+        setShowRegenerateOptions(null);
+      }
+      if (showToolsDropdown) {
+        setShowToolsDropdown(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showRegenerateOptions, showToolsDropdown]);
 
   const selectedModel = models.find(m => m.id === selectedModelId);
   const supportsImages = selectedModel?.image;
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Handle file selection and upload
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (!supportsImages && file.type.startsWith('image/')) {
-      alert('Current model does not support image uploads. Please select a vision-enabled model.');
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
+    for (const file of files) {
+      // Check if image is supported by current model
+      if (file.type.startsWith('image/') && !supportsImages) {
+        alert('Current model does not support image uploads. Please select a vision-enabled model.');
+        continue;
       }
 
-      const result = await response.json();
-      setUploadedFiles(prev => [...prev, {
-        url: result.url,
+      // Add file to selected files with uploading state
+      const fileWithMeta: UploadedFile = {
+        url: URL.createObjectURL(file),
         name: file.name,
         type: file.type,
         size: file.size,
-      }]);
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload file. Please try again.');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        file: file,
+        uploading: true,
+      };
+
+      setSelectedFiles(prev => [...prev, fileWithMeta]);
+
+      // Upload file
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
+        }
+
+        const result = await response.json();
+
+        // Update file with uploaded URL (PDFs stay as PDFs in UI)
+        console.log('Upload result for', file.name, ':', {
+          url: result.url,
+          format: result.format
+        });
+        
+        setSelectedFiles(prev => prev.map(f => 
+          f.file === file 
+            ? { 
+                ...f, 
+                url: result.url, 
+                uploading: false
+              }
+            : f
+        ));
+      } catch (error) {
+        console.error('Upload error:', error);
+        alert('Failed to upload file. Please try again.');
+        // Remove failed upload
+        setSelectedFiles(prev => prev.filter(f => f.file !== file));
       }
+    }
+
+    // Clear input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
+  // Remove file
   const removeFile = (index: number) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    const file = selectedFiles[index];
+    if (file.url.startsWith('blob:')) {
+      URL.revokeObjectURL(file.url);
+    }
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Handle form submission
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input.trim() && uploadedFiles.length === 0) return;
-    if (isUploading) return; // Don't submit while uploading
+    if (!input.trim() && selectedFiles.length === 0) return;
+    
+    // Check if any files are still uploading
+    const uploadingFiles = selectedFiles.filter(f => f.uploading);
+    if (uploadingFiles.length > 0) {
+      alert('Please wait for all files to finish uploading.');
+      return;
+    }
 
-    // Store current attachments before clearing
-    const currentAttachments = uploadedFiles.map(file => ({
+    // Simple clean approach - just user message and attachments
+    const userMessage = input.trim();
+
+    // Prepare attachments (include ALL files, including PDFs)
+    const attachments = selectedFiles.map(file => ({
       url: file.url,
       name: file.name,
       contentType: file.type,
       type: file.type,
     }));
 
-    // Use handleSubmit with experimental_attachments
-    handleSubmit(e, {
-      experimental_attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+    console.log('Prepared attachments:', attachments);
+    console.log('Selected files:', selectedFiles);
+    console.log('User message to send:', userMessage);
+    console.log('About to call append with:', {
+      content: userMessage,
+      attachments: attachments,
+      attachmentsCount: attachments.length
     });
 
-    // Clear files immediately after submit to remove from preview
-    setTimeout(() => {
-      setUploadedFiles([]);
-    }, 100);
+    // Clear input field and selected files immediately
+    if (textareaRef.current) {
+      textareaRef.current.value = '';
+    }
+    handleInputChange({ target: { value: '' } } as any);
+    
+    selectedFiles.forEach(file => {
+      if (file.url.startsWith('blob:')) {
+        URL.revokeObjectURL(file.url);
+      }
+    });
+    setSelectedFiles([]);
+
+    // Use append function directly - simple and clean
+    e.preventDefault();
+    
+    try {
+      // Send user message with attachments (PDFs are now converted to images)
+      await append({
+        role: 'user',
+        content: userMessage,
+      }, {
+        experimental_attachments: attachments.length > 0 ? attachments : undefined,
+      });
+      console.log('Append completed successfully');
+    } catch (error) {
+      console.error('Append failed:', error);
+    }
   };
 
-  const startEditing = (message: Message) => {
-    setEditingMessageId(message.id);
-    setEditingContent(message.content);
+  // Handle key down for textarea
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!isLoading && (input.trim() || selectedFiles.length > 0)) {
+        onSubmit(e as any);
+      }
+    }
   };
 
-  const cancelEditing = () => {
+  // Handle regenerate with different model
+  const handleRegenerate = async (messageIndex: number, newModelId?: string) => {
+    const targetModel = newModelId || selectedModelId;
+    setShowRegenerateOptions(null);
+    
+    // Get all messages up to the one we want to regenerate
+    const messagesToKeep = messages.slice(0, messageIndex);
+    setMessages(messagesToKeep);
+    
+    // Change model if specified
+    if (newModelId && newModelId !== selectedModelId) {
+      setSelectedModelId(newModelId);
+    }
+    
+    // Regenerate from the last user message
+    const lastUserMessage = messagesToKeep[messagesToKeep.length - 1];
+    if (lastUserMessage) {
+      reload();
+    }
+  };
+
+  // Handle message deletion
+  const handleDeleteMessage = (messageIndex: number) => {
+    const updatedMessages = messages.filter((_, index) => index !== messageIndex);
+    setMessages(updatedMessages);
+  };
+
+  // Handle message editing
+  const handleEditMessage = (messageId: string, content: string) => {
+    setEditingMessageId(messageId);
+    setEditContent(content);
+  };
+
+  const handleSaveEdit = async (messageIndex: number) => {
+    if (!editContent.trim()) return;
+    
+    const message = messages[messageIndex];
+    const isUserMessage = message.role === 'user';
+    
+    // Update the message content
+    const updatedMessages = [...messages];
+    updatedMessages[messageIndex] = { ...updatedMessages[messageIndex], content: editContent.trim() };
+    
+    // If editing user message, remove subsequent AI response and regenerate
+    if (isUserMessage) {
+      // Remove all messages after this user message
+      const messagesToKeep = updatedMessages.slice(0, messageIndex + 1);
+      setMessages(messagesToKeep);
+      setEditingMessageId(null);
+      setEditContent('');
+      
+      // Update database with edited message
+      if (currentChatId) {
+        try {
+          await fetch(`/api/chats/${currentChatId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              updateMessage: {
+                id: message.id,
+                content: editContent.trim()
+              }
+            }),
+          });
+        } catch (error) {
+          console.error('Failed to update message:', error);
+        }
+      }
+      
+      // Trigger regeneration
+      setTimeout(() => reload(), 100);
+    } else {
+      // For assistant messages, just update locally
+      setMessages(updatedMessages);
+      setEditingMessageId(null);
+      setEditContent('');
+    }
+  };
+
+  const handleCancelEdit = () => {
     setEditingMessageId(null);
-    setEditingContent('');
+    setEditContent('');
   };
 
-  const saveEdit = async () => {
-    if (!editingMessageId || !editingContent.trim()) return;
-
-    try {
-      const updatedMessages = messages.map(msg => 
-        msg.id === editingMessageId 
-          ? { ...msg, content: editingContent }
-          : msg
-      );
-      
-      setMessages(updatedMessages);
-      
-      const editedMessage = messages.find(msg => msg.id === editingMessageId);
-      if (editedMessage?.role === 'user') {
-        const messageIndex = messages.findIndex(msg => msg.id === editingMessageId);
-        const messagesUpToEdit = updatedMessages.slice(0, messageIndex + 1);
-        setMessages(messagesUpToEdit);
-        
-        setTimeout(() => {
-          reload();
-        }, 100);
-      }
-      
-      if (currentChatId) {
+  // Handle deleting user message and subsequent AI response
+  const handleDeleteUserMessage = async (messageIndex: number) => {
+    const message = messages[messageIndex];
+    
+    // Find the next assistant message after this user message
+    let messagesToRemove = [messageIndex];
+    if (messageIndex + 1 < messages.length && messages[messageIndex + 1].role === 'assistant') {
+      messagesToRemove.push(messageIndex + 1);
+    }
+    
+    // Remove messages from state
+    const updatedMessages = messages.filter((_, index) => !messagesToRemove.includes(index));
+    setMessages(updatedMessages);
+    
+    // Update database
+    if (currentChatId) {
+      try {
+        const messageIdsToDelete = messagesToRemove.map(idx => messages[idx].id);
         await fetch(`/api/chats/${currentChatId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages }),
+          body: JSON.stringify({ 
+            deleteMessages: messageIdsToDelete
+          }),
         });
+      } catch (error) {
+        console.error('Failed to delete messages:', error);
       }
-      
-      cancelEditing();
-    } catch (error) {
-      console.error('Failed to save edit:', error);
-      alert('Failed to save edit. Please try again.');
     }
   };
 
-  const deleteMessage = async (messageId: string) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
-
-    try {
-      const messageIndex = messages.findIndex(msg => msg.id === messageId);
-      const updatedMessages = messages.filter(msg => msg.id !== messageId);
-      
-      if (messages[messageIndex]?.role === 'user' && messages[messageIndex + 1]?.role === 'assistant') {
-        const assistantMessageId = messages[messageIndex + 1].id;
-        updatedMessages.splice(messageIndex, 1);
+  // Handle try again with current model
+  const handleTryAgain = () => {
+    setShowToolsDropdown(false);
+    if (messages.length > 0) {
+      const lastUserMessage = messages[messages.length - 2]; // Get the user message before last assistant message
+      if (lastUserMessage && lastUserMessage.role === 'user') {
+        // Remove the last assistant message and regenerate
+        const messagesWithoutLast = messages.slice(0, -1);
+        setMessages(messagesWithoutLast);
+        reload();
       }
-      
-      setMessages(updatedMessages);
-      
-      if (currentChatId) {
-        await fetch(`/api/chats/${currentChatId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages }),
-        });
-      }
-    } catch (error) {
-      console.error('Failed to delete message:', error);
-      alert('Failed to delete message. Please try again.');
     }
+  };
+
+  // Handle model switch
+  const handleModelSwitch = (modelId: string) => {
+    setSelectedModelId(modelId);
+    setShowToolsDropdown(false);
+  };
+
+  // Get model description for display
+  const getModelDescription = (modelId: string) => {
+    const descriptions: { [key: string]: string } = {
+      'gpt-4-turbo': 'Great for most tasks',
+      'gpt-4': 'Great for most tasks',
+      'gpt-4o': 'Great for most tasks',
+      'gpt-4o-mini': 'Faster for everyday tasks',
+      'o1-mini': 'Fastest at advanced reasoning',
+      'o1-preview': 'Best at advanced reasoning',
+      'claude-3-sonnet': 'Balanced performance',
+      'claude-3-opus': 'Most capable',
+      'claude-3-haiku': 'Fast and efficient',
+    };
+    return descriptions[modelId] || 'AI model';
   };
 
   const userName = user?.firstName || 'You';
+  const hasUploadingFiles = selectedFiles.some(f => f.uploading);
+
+  // Custom markdown components for code blocks
+  const markdownComponents = {
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : '';
+      
+      if (!inline && language) {
+        return (
+          <div className="relative group my-4 bg-[#1a1a1a] rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a1a]">
+              <span className="text-sm text-gray-300 font-medium">{language}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+                className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 px-2 py-1 hover:bg-gray-700/50 rounded text-sm text-gray-300 hover:text-white"
+                title="Copy code"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy</span>
+              </button>
+            </div>
+            <SyntaxHighlighter
+              style={oneDark}
+              language={language}
+              PreTag="div"
+              customStyle={{
+                margin: 0,
+                borderRadius: 0,
+                background: '#1a1a1a',
+                border: 'none',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                padding: '16px',
+              }}
+              codeTagProps={{
+                style: {
+                  background: 'transparent',
+                  fontSize: 'inherit',
+                }
+              }}
+              {...props}
+            >
+              {String(children).replace(/\n$/, '')}
+            </SyntaxHighlighter>
+          </div>
+        );
+      }
+      
+      // Inline code
+      return (
+        <code 
+          className="bg-gray-700 text-gray-100 px-1.5 py-0.5 rounded text-sm font-mono" 
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    pre: ({ children }: any) => {
+      return <>{children}</>;
+    },
+  };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          {messages.length === 0 ? (
-            <div className="text-center text-muted-foreground py-12">
-              <h3 className="text-lg font-medium mb-2">Start a conversation</h3>
-              <p>Send a message to begin chatting with AI</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {messages.map((message, index) => {
-                const messageWithAttachments = message as any;
-                
-                // Log messages being rendered
-                if (messageWithAttachments.attachments?.length > 0) {
-                  console.log('Rendering message with attachments:', {
-                    id: message.id,
-                    role: message.role,
-                    attachmentCount: messageWithAttachments.attachments.length,
-                    attachmentUrls: messageWithAttachments.attachments.map((att: any) => att.url)
-                  });
-                }
-                
+    <div className="flex flex-col h-full bg-[#212121] relative">
+      {/* Image Modal */}
+      {modalImage && (
+        <ImageModal
+          src={modalImage.src}
+          alt={modalImage.alt}
+          onClose={() => setModalImage(null)}
+        />
+      )}
 
-                return (
-                  <div
-                    key={message.id}
-                    className={`flex gap-4 ${
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    }`}
-                  >
-                    {message.role === 'assistant' && (
-                      <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center overflow-hidden">
-                        <Image
-                          src="/icons/favicon.ico"
-                          alt="Galaxy AI"
-                          width={32}
-                          height={32}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    )}
-                    
-                    <div className={`max-w-2xl ${message.role === 'user' ? 'order-first' : ''}`}>
-                      <div
-                        className={`rounded-2xl px-4 py-3 ${
-                          message.role === 'user'
-                            ? 'bg-[#10a37f] text-white ml-auto'
-                            : 'bg-muted text-foreground'
-                        }`}
-                      >
-                        {(messageWithAttachments.attachments || messageWithAttachments.experimental_attachments) && (messageWithAttachments.attachments?.length > 0 || messageWithAttachments.experimental_attachments?.length > 0) && (
-                          <div className="mb-3 space-y-2">
-                            {(messageWithAttachments.attachments || messageWithAttachments.experimental_attachments)?.map((attachment: any, idx: number) => (
-                              <div key={idx}>
-                                {(attachment.type || attachment.contentType)?.startsWith('image/') ? (
-                                  <div className="rounded-lg overflow-hidden max-w-md">
-                                    <img 
-                                      src={attachment.url} 
-                                      alt={attachment.name}
-                                      className="w-full h-auto max-h-96 object-contain"
-                                      loading="lazy"
+      {/* PDF Modal */}
+      {modalPdf && (
+        <PDFModal
+          src={modalPdf.src}
+          name={modalPdf.name}
+          onClose={() => setModalPdf(null)}
+        />
+      )}
+
+      {/* Messages Area */}
+      <div 
+        className="flex-1 overflow-y-auto"
+        style={{ 
+          paddingBottom: messages.length === 0 ? 0 : Math.max(inputAreaHeight + 32, 208) + 'px' 
+        }}
+      >
+        {messages.length === 0 ? (
+          /* Empty State */
+          <div className="flex flex-col items-center justify-center h-full px-4 pb-64">
+            <div className="text-center">
+              <h1 className="text-2xl md:text-3xl font-normal text-gray-200 mb-8">
+                What are you working on?
+              </h1>
+            </div>
+          </div>
+        ) : (
+          /* Messages */
+          <div className="w-full">
+            {messages.map((message, index) => {
+              const messageWithAttachments = message as any;
+              // Handle both experimental_attachments (new messages) and attachments (from database)
+              const attachments = messageWithAttachments.experimental_attachments || messageWithAttachments.attachments || [];
+              const hasAttachments = attachments && attachments.length > 0;
+            
+              return (
+                <div 
+                  key={message.id} 
+                  className="group w-full py-4 md:py-8 px-3 md:px-4 relative"
+                  onMouseEnter={() => setHoveredMessageId(message.id)}
+                  onMouseLeave={() => setHoveredMessageId(null)}
+                >
+                  <div className="max-w-full md:max-w-3xl mx-auto">
+                    {message.role === 'user' ? (
+                      /* User Message */
+                      <div className="flex flex-col items-end relative">
+                        {/* Display attached files outside bubble */}
+                        {hasAttachments && (
+                          <div className="mb-2 flex flex-wrap gap-2 justify-end">
+                            {attachments.map((attachment: any, attachIndex: number) => {
+                              const isImage = attachment.contentType?.startsWith('image/') || 
+                                            attachment.type?.startsWith('image/') ||
+                                            (attachment.url && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(attachment.url));
+                              const isPdf = attachment.contentType === 'application/pdf' || 
+                                          attachment.type === 'application/pdf' ||
+                                          (attachment.url && /\.pdf(\?|$)/i.test(attachment.url));
+
+                              if (isImage) {
+                                return (
+                                  <div key={attachIndex} className="relative">
+                                    <img
+                                      src={attachment.url}
+                                      alt={attachment.name || 'Uploaded image'}
+                                      className="max-w-[250px] max-h-[250px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity shadow-lg"
+                                      onClick={() => setModalImage({ src: attachment.url, alt: attachment.name || 'Uploaded image' })}
+                                      onError={(e) => {
+                                        console.error('Failed to load image:', attachment.url);
+                                        e.currentTarget.style.display = 'none';
+                                      }}
                                     />
-                                    <div className={`text-xs p-2 ${
-                                      message.role === 'user' 
-                                        ? 'bg-white/10 text-white/80' 
-                                        : 'bg-muted text-muted-foreground'
-                                    }`}>
-                                      {attachment.name}
+                                  </div>
+                                );
+                              } else if (isPdf) {
+                                return (
+                                  <div key={attachIndex} className="relative">
+                                    <div 
+                                      className="bg-[#3f3f3f] rounded-xl p-3 cursor-pointer hover:bg-[#4f4f4f] transition-colors border border-white/10 hover:border-white/20 max-w-[300px]"
+                                      onClick={() => setModalPdf({ src: attachment.url, name: attachment.name || 'PDF' })}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                          </svg>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-white text-sm font-medium truncate">
+                                            {attachment.name || 'Document.pdf'}
+                                          </div>
+                                          <div className="text-gray-400 text-xs">
+                                            PDF
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 text-sm p-2 border rounded">
-                                    <ImageIcon className="w-4 h-4" />
-                                    <span>{attachment.name}</span>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                                );
+                              }
+                              return null;
+                            })}
                           </div>
                         )}
-
-                        {editingMessageId === message.id ? (
-                          <div className="space-y-2">
-                            <Textarea
-                              ref={editTextareaRef}
-                              value={editingContent}
-                              onChange={(e) => setEditingContent(e.target.value)}
-                              className="min-h-[60px] resize-none border-none bg-transparent p-0 focus-visible:ring-0"
-                            />
-                            <div className="flex gap-2">
-                              <Button size="sm" onClick={saveEdit} className="h-6 px-2 text-xs">
-                                <Check className="w-3 h-3" />
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={cancelEditing} className="h-6 px-2 text-xs">
-                                <XIcon className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="relative group">
-                            <div className="whitespace-pre-wrap">{message.content}</div>
-                            
-                            {message.role === 'user' && (
-                              <div className="absolute -right-2 -top-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => startEditing(message)}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => deleteMessage(message.id)}
-                                  className="h-6 w-6 p-0"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
+                        
+                        {/* Text bubble */}
+                        {message.content && (
+                          <div className="bg-[#2f2f2f] rounded-3xl px-4 md:px-5 py-3 max-w-[85%] md:max-w-[70%]">
+                            {editingMessageId === message.id ? (
+                              <div className="text-white text-base leading-6">
+                                <textarea
+                                  value={editContent}
+                                  onChange={(e) => setEditContent(e.target.value)}
+                                  className="w-full bg-transparent text-white resize-none border-none outline-none"
+                                  rows={3}
+                                  autoFocus
+                                />
+                                <div className="flex items-center gap-2 mt-2">
+                                  <button
+                                    onClick={() => handleSaveEdit(index)}
+                                    className="px-3 py-1 bg-white text-black rounded text-sm hover:bg-gray-200 transition-colors"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    className="px-3 py-1 text-white rounded text-sm hover:bg-white/10 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-white text-base leading-6">
+                                <ReactMarkdown components={markdownComponents}>{message.content}</ReactMarkdown>
                               </div>
                             )}
                           </div>
                         )}
-                      </div>
-                      
-                      <div className={`text-xs text-muted-foreground mt-1 ${
-                        message.role === 'user' ? 'text-right' : 'text-left'
-                      }`}>
-                        {message.role === 'user' ? userName : 'Assistant'}
-                      </div>
-                    </div>
 
-                    {message.role === 'user' && (
-                      <div className="w-8 h-8 bg-muted rounded-full flex items-center justify-center text-sm font-medium">
-                        {userName.charAt(0).toUpperCase()}
+                        {/* Message Actions - Under message like in screenshot */}
+                        {hoveredMessageId === message.id && editingMessageId !== message.id && (
+                          <div className="absolute -bottom-8 right-4 flex items-center gap-1">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(message.content)}
+                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                              title="Copy"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleEditMessage(message.id, message.content)}
+                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUserMessage(index)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-white/10 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Assistant Message */
+                      <div className="w-full relative">
+                        {/* Display attached files for assistant messages (if any) */}
+                        {hasAttachments && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {attachments.map((attachment: any, attachIndex: number) => {
+                              const isImage = attachment.contentType?.startsWith('image/') || 
+                                            attachment.type?.startsWith('image/') ||
+                                            (attachment.url && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(attachment.url));
+                              const isPdf = attachment.contentType === 'application/pdf' || 
+                                          attachment.type === 'application/pdf' ||
+                                          (attachment.url && /\.pdf(\?|$)/i.test(attachment.url));
+
+                              if (isImage) {
+                                return (
+                                  <div key={attachIndex} className="relative">
+                                    <img
+                                      src={attachment.url}
+                                      alt={attachment.name || 'Image'}
+                                      className="max-w-[350px] max-h-[350px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity shadow-lg"
+                                      onClick={() => setModalImage({ src: attachment.url, alt: attachment.name || 'Image' })}
+                                      onError={(e) => {
+                                        console.error('Failed to load image:', attachment.url);
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              } else if (isPdf) {
+                                return (
+                                  <div key={attachIndex} className="relative">
+                                    <div 
+                                      className="bg-[#2f2f2f] rounded-xl p-3 cursor-pointer hover:bg-[#3f3f3f] transition-colors border border-white/10 hover:border-white/20 max-w-[300px]"
+                                      onClick={() => setModalPdf({ src: attachment.url, name: attachment.name || 'PDF' })}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                          </svg>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-white text-sm font-medium truncate">
+                                            {attachment.name || 'Document.pdf'}
+                                          </div>
+                                          <div className="text-gray-400 text-xs">
+                                            PDF
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })}
+                          </div>
+                        )}
+                        
+                        {/* Display text content */}
+                        {message.content && (
+                          <div className="text-white text-base leading-7">
+                            <ReactMarkdown components={markdownComponents}>{message.content}</ReactMarkdown>
+                          </div>
+                        )}
+
+                        {/* Message Actions - Under message like in screenshot */}
+                        {hoveredMessageId === message.id && (
+                          <div className="absolute -bottom-8 left-0 flex items-center gap-1">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(message.content)}
+                              className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                              title="Copy"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                            
+                            {/* Regenerate Button Group */}
+                            <div className="flex items-center bg-white/5 rounded-lg">
+                              <button
+                                onClick={() => handleRegenerate(index)}
+                                className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-l-lg transition-colors"
+                                title="Try again"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setShowRegenerateOptions(showRegenerateOptions === message.id ? null : message.id)}
+                                className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-r-lg border-l border-white/10 transition-colors"
+                                title="Try again with different model"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Regenerate Options */}
+                        {showRegenerateOptions === message.id && (
+                          <div className="absolute left-8 top-0 bg-[#2f2f2f] rounded-xl shadow-2xl border border-white/10 py-2 w-[200px] z-20">
+                            {/* Switch Model Section */}
+                            <div className="px-3 py-1">
+                              <div className="text-white text-sm font-medium mb-2 px-1">Switch model</div>
+                              
+                              {/* Auto Option */}
+                              <button
+                                onClick={() => {
+                                  handleRegenerate(index, 'auto');
+                                  setShowRegenerateOptions(null);
+                                }}
+                                className="w-full text-left p-2 hover:bg-white/5 rounded-lg transition-colors"
+                              >
+                                <div className="text-white font-medium text-sm">Auto</div>
+                              </button>
+                              
+                              {/* Model Options */}
+                              {models.map((model) => (
+                                <button
+                                  key={model.id}
+                                  onClick={() => {
+                                    handleRegenerate(index, model.id);
+                                    setShowRegenerateOptions(null);
+                                  }}
+                                  className={`w-full text-left p-2 hover:bg-white/5 rounded-lg transition-colors group ${
+                                    selectedModelId === model.id ? 'bg-white/5' : ''
+                                  }`}
+                                >
+                                  <div className="text-white font-medium text-sm">{model.name}</div>
+                                  <div className="text-gray-400 text-xs mt-0.5">
+                                    {model.description || getModelDescription(model.id)}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Divider */}
+                            <div className="border-t border-white/10 my-1"></div>
+
+                            {/* Try Again Section */}
+                            <button
+                              onClick={() => {
+                                handleRegenerate(index);
+                                setShowRegenerateOptions(null);
+                              }}
+                              className="w-full text-left p-2 mx-1 hover:bg-white/5 rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <RotateCcw className="w-4 h-4 text-gray-400" />
+                              <div>
+                                <div className="text-white font-medium text-sm">Try again</div>
+                                <div className="text-gray-400 text-xs">{selectedModel?.name || 'Current model'}</div>
+                              </div>
+                            </button>
+
+                            {/* Search the web */}
+                            <button
+                              onClick={() => {
+                                setShowRegenerateOptions(null);
+                                alert('Web search feature coming soon!');
+                              }}
+                              className="w-full text-left p-2 mx-1 hover:bg-white/5 rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0 9c-5 0-9-4-9-9s4-9 9-9m0 9v9" />
+                              </svg>
+                              <div className="text-white font-medium text-sm">Search the web</div>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                );
-              })}
-              
-              {(status === 'submitted') && (
-                <div className="flex gap-4 justify-start">
-                  <div className="w-8 h-8 bg-[#10a37f] rounded-full flex items-center justify-center overflow-hidden">
-                    <Image
-                      src="/icons/favicon.ico"
-                      alt="Galaxy AI"
-                      width={32}
-                      height={32}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="bg-muted rounded-2xl px-4 py-3 max-w-2xl">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                </div>
+              );
+            })}
+
+            {/* Thinking Animation */}
+            {status === 'submitted' && (
+              <div className="w-full py-4 md:py-8 px-3 md:px-4">
+                <div className="max-w-full md:max-w-3xl mx-auto">
+                  <div className="text-white">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
-      <div className="border-t bg-background/95 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto p-4">
-          {/* Model Selector */}
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <ModelSelector
-                selectedModelId={selectedModelId}
-                onModelChange={setSelectedModelId}
-              />
-              {supportsImages && (
-                <div className="flex items-center gap-1 text-xs text-[#10a37f] bg-[#10a37f]/10 px-2 py-1 rounded-full">
-                  <ImageIcon className="w-3 h-3" />
-                  <span>Vision</span>
+      <div className={`w-full bg-[#212121] ${
+        messages.length === 0 ? 'absolute bottom-1/2 left-0 right-0 transform translate-y-1/2' : 'absolute bottom-0 left-0 right-0'
+      }`}>
+        <div 
+          ref={inputAreaRef}
+          className="group w-full py-4 md:py-8 px-3 md:px-4 relative"
+        >
+          <div className={`${
+            messages.length === 0 ? 'max-w-4xl' : 'max-w-3xl'
+          } mx-auto`}>
+          <form onSubmit={onSubmit} className="w-full">
+            <div className="bg-[#2f2f2f] rounded-[30px] p-4">
+              {/* File Previews - Show inside input area */}
+              {selectedFiles.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="relative group">
+                      {file.type.startsWith('image/') ? (
+                        <div className="relative">
+                          <div 
+                            className="w-16 h-16 rounded-2xl overflow-hidden border border-white/20 cursor-pointer hover:border-white/40 transition-colors"
+                            onClick={() => !file.uploading && setModalImage({ src: file.url, alt: file.name })}
+                          >
+                            <img 
+                              src={file.url} 
+                              alt={file.name}
+                              className="w-full h-full object-cover"
+                            />
+                            {file.uploading && (
+                              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                <Loader2 className="w-4 h-4 text-white animate-spin" />
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="absolute -top-1 -right-1 w-5 h-5 bg-white text-black rounded-full flex items-center justify-center text-xs hover:bg-gray-200 transition-colors shadow-sm"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : file.type === 'application/pdf' ? (
+                        <div className="relative">
+                          <div 
+                            className="bg-[#3f3f3f] rounded-xl p-3 cursor-pointer hover:bg-[#4f4f4f] transition-colors border border-white/10 hover:border-white/20 max-w-[250px]"
+                            onClick={() => !file.uploading && setModalPdf({ src: file.url, name: file.name })}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                </svg>
+                                {file.uploading && (
+                                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white text-sm font-medium truncate">
+                                  {file.name}
+                                </div>
+                                <div className="text-gray-400 text-xs">
+                                  PDF
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="absolute -top-1 -right-1 w-5 h-5 bg-white text-black rounded-full flex items-center justify-center text-xs hover:bg-gray-200 transition-colors shadow-sm"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="relative flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2 pr-8">
+                          <Paperclip className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm text-white truncate max-w-[100px]">{file.name}</span>
+                          {file.uploading && (
+                            <Loader2 className="w-3 h-3 text-white animate-spin ml-1" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="absolute right-1 top-1 w-4 h-4 bg-white text-black rounded-full flex items-center justify-center text-xs hover:bg-gray-200 transition-colors"
+                          >
+                            <X className="w-2 h-2" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Uploaded Files Preview */}
-          {uploadedFiles.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-3">
-              {uploadedFiles.map((file, index) => (
-                <div key={index} className="relative group">
-                  <div className="relative max-w-xs">
-                    <img 
-                      src={file.url} 
-                      alt={file.name}
-                      className="w-full h-32 object-cover rounded-lg border"
-                      loading="lazy"
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-2 rounded-b-lg">
-                      <div className="truncate">{file.name}</div>
-                    </div>
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Message Input Form */}
-          <form onSubmit={onSubmit} className="relative">
-            <div className="relative flex items-end space-x-2">
-              <div className="relative flex-1">
-                <Textarea
+              {/* Text Input Row */}
+              <div className="mb-3">
+                <textarea
                   ref={textareaRef}
                   value={input}
                   onChange={handleInputChange}
-                  placeholder="Message ChatGPT..."
-                  disabled={isLoading || isUploading}
-                  className="min-h-[60px] max-h-32 resize-none pr-16 rounded-xl border-border focus:ring-2 focus:ring-[#10a37f] focus:border-transparent"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (!isUploading) {
-                        onSubmit(e as any);
-                      }
-                    }
+                  onKeyDown={handleKeyDown}
+                  placeholder={messages.length === 0 ? "Ask anything" : "Message Galaxy AI"}
+                  className="w-full bg-transparent text-white placeholder-gray-400 resize-none min-h-[24px] max-h-[200px] text-base leading-6"
+                  rows={1}
+                  disabled={isLoading}
+                  style={{ 
+                    fontFamily: 'Segoe UI, -apple-system, BlinkMacSystemFont, sans-serif',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none'
                   }}
                 />
-                
-                <div className="absolute right-2 bottom-2 flex items-center space-x-1">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={supportsImages ? "image/*" : ""}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  
-                  {supportsImages && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading || isLoading}
-                      className="h-8 w-8 p-0 hover:bg-muted"
-                    >
-                      {isUploading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Paperclip className="w-4 h-4" />
-                      )}
-                    </Button>
-                  )}
-                  
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={isLoading || isUploading || (!input.trim() && uploadedFiles.length === 0)}
-                    className="h-8 w-8 p-0 bg-[#10a37f] hover:bg-[#0d8a6b] disabled:opacity-50"
+              </div>
+
+              {/* Controls Row */}
+              <div className="flex items-center justify-between">
+                {/* Left Side Buttons */}
+                <div className="flex items-center gap-2">
+                  {/* Plus Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 text-white hover:text-gray-300 hover:bg-white/10 rounded-lg transition-colors"
+                    title="Attach files"
                   >
-                    {isLoading ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+
+                  {/* Tools Button */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowToolsDropdown(!showToolsDropdown);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 text-white hover:text-gray-300 hover:bg-white/10 rounded-lg transition-colors text-sm whitespace-nowrap"
+                      title="Tools"
+                      style={{ fontFamily: 'Segoe UI, -apple-system, BlinkMacSystemFont, sans-serif' }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                      </svg>
+                      <span>Tools</span>
+                    </button>
+
+                    {/* Tools Dropdown */}
+                    {showToolsDropdown && (
+                      <div 
+                        className="absolute bottom-full left-0 mb-2 bg-[#2f2f2f] rounded-xl shadow-2xl border border-white/10 py-1 min-w-[240px] z-50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Switch Model Section */}
+                        <div className="px-2 py-1">
+                          <div className="text-white text-xs font-medium mb-2 px-2">Switch model</div>
+                          
+                          {/* Auto Option */}
+                          <button
+                            onClick={() => handleModelSwitch('auto')}
+                            className="w-full text-left p-2 hover:bg-white/5 rounded-lg transition-colors group"
+                          >
+                            <div className="text-white font-medium text-sm">Auto</div>
+                          </button>
+
+                          {/* Model Options */}
+                          {models.map((model) => (
+                            <button
+                              key={model.id}
+                              onClick={() => handleModelSwitch(model.id)}
+                              className={`w-full text-left p-2 hover:bg-white/5 rounded-lg transition-colors group ${
+                                selectedModelId === model.id ? 'bg-white/5' : ''
+                              }`}
+                            >
+                              <div className="text-white font-medium text-sm">{model.name}</div>
+                              <div className="text-gray-400 text-xs mt-0.5">
+                                {model.description || getModelDescription(model.id)}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-white/10 my-1"></div>
+
+                        {/* Try Again Section */}
+                        {messages.length > 0 && messages[messages.length - 1]?.role === 'assistant' && (
+                          <>
+                            <button
+                              onClick={handleTryAgain}
+                              className="w-full text-left p-2 mx-1 hover:bg-white/5 rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 text-gray-400" />
+                              <div>
+                                <div className="text-white font-medium text-sm">Try again</div>
+                                <div className="text-gray-400 text-xs">{selectedModel?.name || 'Current model'}</div>
+                              </div>
+                            </button>
+                            <div className="border-t border-white/10 my-1"></div>
+                          </>
+                        )}
+
+                        {/* Additional Tools */}
+                        <button
+                          onClick={() => {
+                            setShowToolsDropdown(false);
+                            // TODO: Implement web search functionality
+                            alert('Web search feature coming soon!');
+                          }}
+                          className="w-full text-left p-2 mx-1 hover:bg-white/5 rounded-lg transition-colors flex items-center gap-2"
+                        >
+                          <Globe className="w-3.5 h-3.5 text-gray-400" />
+                          <div className="text-white font-medium text-sm">Search the web</div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Side Buttons */}
+                <div className="flex items-center gap-2">
+                  {/* Microphone Button */}
+                  <button
+                    type="button"
+                    className="p-1.5 text-white hover:text-gray-300 hover:bg-white/10 rounded-lg transition-colors"
+                    title="Voice input"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </button>
+
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={(!input.trim() && selectedFiles.length === 0) || isLoading || hasUploadingFiles}
+                    className="w-8 h-8 bg-gray-600 text-white rounded-full hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-500 transition-colors flex items-center justify-center"
+                    title={hasUploadingFiles ? "Uploading files..." : "Send message"}
+                  >
+                    {hasUploadingFiles ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Send className="w-4 h-4" />
+                      <span className="text-sm font-bold">↑</span>
                     )}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
           </form>
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.txt"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Footer Text */}
+          <div className="text-center text-xs text-gray-500 mt-4">
+            Galaxy AI can make mistakes. Check important info.{' '}
+            <button className="underline hover:text-gray-400 transition-colors">
+              Cookie Preferences
+            </button>
+            .
+          </div>
+          </div>
         </div>
       </div>
     </div>

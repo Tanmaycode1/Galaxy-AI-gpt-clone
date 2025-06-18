@@ -13,7 +13,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Galaxy AI - AI Assistant',
   description: 'A pixel-perfect Galaxy AI built with Next.js, featuring AI chat capabilities, file uploads, and more.',
-  keywords: ['ChatGPT', 'AI', 'Assistant', 'OpenAI', 'Anthropic', 'Chat'],
+  keywords: ['Galaxy AI', 'AI', 'Assistant', 'OpenAI', 'Anthropic', 'Chat'],
   authors: [{ name: 'Galaxy.ai' }],
   robots: 'index, follow',
   openGraph: {
@@ -56,7 +56,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         </head>
         <body className={`${inter.className} font-sans antialiased`}>
-          <ThemeProvider defaultTheme="system" storageKey="chatgpt-theme">
+          <ThemeProvider defaultTheme="system" storageKey="galaxy-ai-theme">
             <div className="relative min-h-screen bg-background">
               <div className="fixed top-4 left-4 z-50">
                 <div className="bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3 shadow-lg">
@@ -101,7 +101,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         </head>
         <body className={`${inter.className} font-sans antialiased`}>
-          <ThemeProvider defaultTheme="system" storageKey="chatgpt-theme">
+          <ThemeProvider defaultTheme="system" storageKey="galaxy-ai-theme">
             <div className="relative min-h-screen bg-background">
               {children}
             </div>

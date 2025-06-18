@@ -7,6 +7,253 @@ import { connectDB } from '@/lib/db';
 import { auth } from '@clerk/nextjs/server';
 import fs from 'fs';
 import path from 'path';
+import { v2 as cloudinary } from 'cloudinary';
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Retrieve relevant messages from older chats for context
+async function getOlderChatsContext(userId: string, currentChatId: string | null, maxOlderMessages: number = 30): Promise<any[]> {
+  try {
+    await connectDB();
+    const { Chat } = await import('@/lib/models/Chat');
+    
+    // Get recent chats (excluding current chat) - last 10 chats
+    const query: any = {
+      userId,
+      isArchived: false
+    };
+    
+    if (currentChatId) {
+      query._id = { $ne: currentChatId };
+    }
+    
+    const recentChats = await (Chat as any).find(query)
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .lean();
+
+    if (!recentChats.length) {
+      return [];
+    }
+
+    // Collect all messages from older chats with chat metadata
+    let allOlderMessages: any[] = [];
+    
+    for (const chat of recentChats) {
+      const chatMessages = (chat.messages || []).map((msg: any) => ({
+        ...msg,
+        chatId: chat._id.toString(),
+        chatTitle: chat.title,
+        chatUpdatedAt: chat.updatedAt
+      }));
+      allOlderMessages.push(...chatMessages);
+    }
+
+    // Sort by timestamp (most recent first)
+    allOlderMessages.sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      return bTime - aTime;
+    });
+
+    // Sample messages intelligently
+    if (allOlderMessages.length <= maxOlderMessages) {
+      console.log(`Including all ${allOlderMessages.length} messages from older chats`);
+      return allOlderMessages;
+    }
+
+    // Intelligent sampling: More from recent chats, fewer from older ones
+    const sampledMessages: any[] = [];
+    const chatGroups = new Map<string, any[]>();
+    
+    // Group messages by chat
+    allOlderMessages.forEach(msg => {
+      const chatId = msg.chatId;
+      if (!chatGroups.has(chatId)) {
+        chatGroups.set(chatId, []);
+      }
+      chatGroups.get(chatId)!.push(msg);
+    });
+
+    // Allocate messages per chat (more recent chats get more messages)
+    const chatIds = Array.from(chatGroups.keys());
+    const totalChats = chatIds.length;
+    
+    for (let i = 0; i < totalChats && sampledMessages.length < maxOlderMessages; i++) {
+      const chatId = chatIds[i];
+      const chatMessages = chatGroups.get(chatId)!;
+      
+      // Allocate more messages to more recent chats
+      const weight = Math.max(1, totalChats - i); // Recent chats get higher weight
+      const allocatedSlots = Math.min(
+        chatMessages.length,
+        Math.max(1, Math.floor((maxOlderMessages * weight) / (totalChats * (totalChats + 1) / 2)))
+      );
+      
+      // Take the most recent messages from this chat
+      const selectedFromChat = chatMessages.slice(0, allocatedSlots);
+      sampledMessages.push(...selectedFromChat);
+      
+      console.log(`Chat "${chatMessages[0]?.chatTitle?.substring(0, 30)}...": ${selectedFromChat.length}/${chatMessages.length} messages`);
+    }
+
+    // Sort final selection by timestamp (chronological order)
+    sampledMessages.sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      return aTime - bTime;
+    });
+
+    console.log(`Older chats context: ${allOlderMessages.length} → ${sampledMessages.length} messages from ${recentChats.length} chats`);
+    return sampledMessages;
+    
+  } catch (error) {
+    console.error('Error retrieving older chats context:', error);
+    return [];
+  }
+}
+
+// Intelligent context management: Current chat + older chats context
+async function manageContextWithHistory(
+  currentMessages: any[], 
+  userId: string | null, 
+  currentChatId: string | null,
+  maxMessages: number = 65
+): Promise<any[]> {
+  // Always keep the most recent 4 messages from current chat
+  const recentCurrentMessages = currentMessages.slice(-4);
+  const olderCurrentMessages = currentMessages.slice(0, -4);
+  
+  // Calculate available slots for older context
+  const availableForOlder = maxMessages - recentCurrentMessages.length;
+  
+  if (availableForOlder <= 0) {
+    console.log('Context management: Only recent messages fit');
+    return recentCurrentMessages;
+  }
+
+  let contextMessages: any[] = [];
+  
+  // Add older messages from current chat (if any)
+  const currentChatOlderSlots = Math.min(olderCurrentMessages.length, Math.floor(availableForOlder * 0.6)); // 60% for current chat older messages
+  if (currentChatOlderSlots > 0 && olderCurrentMessages.length > 0) {
+    if (olderCurrentMessages.length <= currentChatOlderSlots) {
+      contextMessages.push(...olderCurrentMessages);
+    } else {
+      // Sample older messages from current chat
+      const step = Math.max(1, Math.floor(olderCurrentMessages.length / currentChatOlderSlots));
+      for (let i = olderCurrentMessages.length - currentChatOlderSlots * step; i < olderCurrentMessages.length; i += step) {
+        if (i >= 0 && i < olderCurrentMessages.length) {
+          contextMessages.push(olderCurrentMessages[i]);
+        }
+      }
+    }
+  }
+
+  // Add messages from older chats (if user is authenticated)
+  if (userId) {
+    const remainingSlots = availableForOlder - contextMessages.length;
+    if (remainingSlots > 0) {
+      const olderChatsMessages = await getOlderChatsContext(userId, currentChatId, remainingSlots);
+      contextMessages.push(...olderChatsMessages);
+    }
+  }
+
+  // Sort all context messages chronologically
+  contextMessages.sort((a, b) => {
+    const aTime = new Date(a.timestamp || 0).getTime();
+    const bTime = new Date(b.timestamp || 0).getTime();
+    return aTime - bTime;
+  });
+
+  // Combine: older context + recent current messages
+  const result = [...contextMessages, ...recentCurrentMessages];
+  
+  console.log(`Cross-chat context: ${currentMessages.length} current + older chats → ${result.length} total messages`);
+  console.log(`  - Recent current: ${recentCurrentMessages.length}`);
+  console.log(`  - Older current: ${contextMessages.filter(m => !m.chatId).length}`);
+  console.log(`  - From older chats: ${contextMessages.filter(m => m.chatId).length}`);
+  
+  return result;
+}
+
+// Convert PDF to images using Cloudinary's built-in PDF transformation
+async function convertPdfToImages(pdfUrl: string, maxPages: number = 10): Promise<string[]> {
+  try {
+    console.log('Converting PDF to images for LLM:', pdfUrl);
+    
+    // Extract public_id from the PDF URL
+    const urlMatch = pdfUrl.match(/\/raw\/upload\/(?:v\d+\/)?(.+)$/);
+    if (!urlMatch) {
+      console.error('Could not extract public_id from PDF URL:', pdfUrl);
+      return [];
+    }
+    
+    const publicId = urlMatch[1];
+    console.log('Extracted public_id for conversion:', publicId);
+    
+    const imageUrls: string[] = [];
+    
+    // Try to convert each page using Cloudinary's PDF page transformation
+    for (let page = 1; page <= maxPages; page++) {
+      try {
+        // Generate image URL for this page using Cloudinary transformation
+        // This converts the raw PDF to an image format
+        const imageUrl = cloudinary.url(publicId, {
+          resource_type: 'raw',
+          format: 'jpg',
+          page: page,
+          width: 800,
+          quality: 'auto',
+          flags: 'progressive'
+        });
+        
+        console.log(`Testing page ${page} conversion with URL:`, imageUrl);
+        
+        // Test if the page conversion works
+        const testResponse = await fetch(imageUrl, { method: 'HEAD' });
+        if (testResponse.ok) {
+          imageUrls.push(imageUrl);
+          console.log(`Page ${page} converted successfully`);
+        } else {
+          console.log(`Page ${page} conversion failed (${testResponse.status}), trying upload method...`);
+          
+          // Try alternative: Re-upload the PDF as an image resource type
+          try {
+            const reuploadResult = await cloudinary.uploader.upload(pdfUrl, {
+              resource_type: 'image',
+              format: 'jpg',
+              page: page,
+              folder: 'chatgpt-clone/temp-pdf-pages',
+              quality: 'auto',
+            });
+            
+            imageUrls.push(reuploadResult.secure_url);
+            console.log(`Page ${page} converted via re-upload successfully`);
+          } catch (reuploadError) {
+            console.log(`Page ${page} re-upload also failed, stopping conversion`);
+            break;
+          }
+        }
+      } catch (pageError) {
+        console.log(`Page ${page} conversion error:`, pageError);
+        break;
+      }
+    }
+    
+    console.log(`PDF converted to ${imageUrls.length} images for LLM`);
+    return imageUrls;
+    
+  } catch (error) {
+    console.error('PDF conversion error for LLM:', error);
+    return [];
+  }
+}
 
 // Configure AI providers
 const openai = createOpenAI({
@@ -109,6 +356,14 @@ export async function POST(req: NextRequest) {
       ...msg,
       attachments: (msg as any).attachments || (msg as any).experimental_attachments || []
     }));
+
+    // Apply intelligent context management with cross-chat history
+    console.log(`Original messages count: ${messagesWithAttachments.length}`);
+    messagesWithAttachments = await manageContextWithHistory(
+      messagesWithAttachments, 
+      authResult?.userId || null, 
+      currentChatId
+    );
     
 
     
@@ -211,45 +466,64 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check if we have image messages that need direct OpenAI handling
-    const hasImages = messagesWithAttachments.some((msg: any) => 
-      msg.attachments?.some((att: any) => att.type.startsWith('image/')) && selectedModel.config.image
+    // Check if we have attachments (images or PDFs) that need processing for the LLM
+    const hasAttachments = messagesWithAttachments.some((msg: any) => 
+      msg.attachments?.length > 0 && selectedModel.config.image
     );
 
-    if (hasImages && selectedModel.config.provider === 'openai') {
+    if (hasAttachments && selectedModel.config.provider === 'openai') {
       // Use AI SDK with proper image format for OpenAI
-      console.log('Using AI SDK with images for OpenAI');
+      console.log('Using AI SDK with attachments for OpenAI');
       
-      const coreMessages = messagesWithAttachments.map((msg) => {
+      const coreMessages = await Promise.all(messagesWithAttachments.map(async (msg) => {
         if ((msg as any).attachments?.length > 0) {
-          const imageAttachments = (msg as any).attachments.filter((att: any) => att.type.startsWith('image/'));
+          const attachments = (msg as any).attachments;
+          const content: any[] = [
+            { type: "text", text: msg.content }
+          ];
           
-          if (imageAttachments.length > 0) {
-            const content: any[] = [
-              { type: "text", text: msg.content }
-            ];
-            
-            imageAttachments.forEach((att: any) => {
+          // Process each attachment
+          for (const att of attachments) {
+            if (att.type.startsWith('image/')) {
+              // Regular image - add directly
               content.push({
                 type: "image",
                 image: att.url
               });
-            });
-            
-            console.log('AI SDK message with images:', { role: msg.role, content });
-            
-            return {
-              role: msg.role,
-              content: content,
-            };
+            } else if (att.type === 'application/pdf') {
+              // PDF - convert to images in background
+              console.log('Converting PDF to images for LLM:', att.name);
+              const pdfImages = await convertPdfToImages(att.url, 10);
+              
+              if (pdfImages.length > 10) {
+                // Skip if too many pages
+                console.log('PDF too large, skipping:', pdfImages.length, 'pages');
+                continue;
+              }
+              
+              // Add each page as an image
+              pdfImages.forEach((imageUrl) => {
+                content.push({
+                  type: "image",
+                  image: imageUrl
+                });
+              });
+            }
           }
+          
+          console.log('AI SDK message with attachments:', { role: msg.role, content: content.length + ' items' });
+          
+          return {
+            role: msg.role,
+            content: content,
+          };
         }
         
         return {
           role: msg.role,
           content: msg.content,
         };
-      });
+      }));
 
       // Use AI SDK streamText with image support
       const result = await streamText({
@@ -266,7 +540,7 @@ export async function POST(req: NextRequest) {
         response.headers.set('x-chat-id', currentChatId);
       }
       
-      console.log('Successfully created AI SDK streaming response with images for chat:', currentChatId);
+      console.log('Successfully created AI SDK streaming response with attachments for chat:', currentChatId);
       return response;
     }
 

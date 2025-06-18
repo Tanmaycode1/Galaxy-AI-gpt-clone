@@ -65,20 +65,27 @@ export async function uploadFile(
 
     console.log('Uploading to Cloudinary folder:', folder);
 
-    // Upload to Cloudinary with optimizations
-    const result = await cloudinary.uploader.upload(dataURI, {
+    // Upload to Cloudinary with appropriate settings based on file type
+    const uploadOptions: any = {
       folder,
-      resource_type: 'auto',
-      quality: 'auto:eco', // Automatic quality optimization
-      fetch_format: 'auto', // Automatic format optimization
-      flags: 'progressive', // Progressive JPEG for better loading
-      transformation: [
+      resource_type: file.type === 'application/pdf' ? 'raw' : 'auto',
+      type: 'upload', // Explicitly set upload type
+    };
+
+    // Only add image optimizations for image files
+    if (file.type.startsWith('image/')) {
+      uploadOptions.quality = 'auto:eco';
+      uploadOptions.fetch_format = 'auto';
+      uploadOptions.flags = 'progressive';
+      uploadOptions.transformation = [
         {
           quality: 'auto:good',
           fetch_format: 'auto'
         }
-      ]
-    });
+      ];
+    }
+
+    const result = await cloudinary.uploader.upload(dataURI, uploadOptions);
 
     console.log('Cloudinary upload successful:', {
       public_id: result.public_id,
