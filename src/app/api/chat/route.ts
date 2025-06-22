@@ -358,12 +358,20 @@ export async function POST(req: NextRequest) {
     }));
 
     // Apply intelligent context management with cross-chat history
+    // BUT ONLY for existing chats - new chats should start clean
     console.log(`Original messages count: ${messagesWithAttachments.length}`);
-    messagesWithAttachments = await manageContextWithHistory(
-      messagesWithAttachments, 
-      authResult?.userId || null, 
-      currentChatId
-    );
+    if (currentChatId) {
+      // Only apply context management for existing chats
+      messagesWithAttachments = await manageContextWithHistory(
+        messagesWithAttachments, 
+        authResult?.userId || null, 
+        currentChatId
+      );
+      console.log(`Context managed messages count for existing chat: ${messagesWithAttachments.length}`);
+    } else {
+      // For new chats, keep messages clean - no context injection
+      console.log(`New chat detected - keeping messages clean: ${messagesWithAttachments.length}`);
+    }
     
 
     

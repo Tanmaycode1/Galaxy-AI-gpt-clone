@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { 
   MessageSquare, 
   Plus, 
@@ -37,34 +38,34 @@ interface Chat {
 }
 
 interface ChatHistoryProps {
-  currentChatId?: string;
-  onChatSelect: (chatId: string) => void;
-  onNewChat: () => void;
   isCollapsed?: boolean;
   sidebarWidth?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
 }
 
-export function ChatHistory({ 
-  currentChatId, 
-  onChatSelect, 
-  onNewChat, 
+const ChatHistoryComponent = function ChatHistory({ 
   isCollapsed = false, 
   sidebarWidth = 260,
   onCollapsedChange
 }: ChatHistoryProps) {
   const { isSignedIn, userId } = useAuth();
+  const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentChatId, setCurrentChatId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
 
-  // Fetch chats
+  // Fetch chats - only once when component mounts
   const fetchChats = useCallback(async () => {
-    if (!isSignedIn || !userId) return;
+    if (!isSignedIn || !userId) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/chats');
@@ -79,9 +80,21 @@ export function ChatHistory({
     }
   }, [isSignedIn, userId]);
 
+  // Track current chat from URL
+  useEffect(() => {
+    const path = window.location.pathname;
+    const chatIdMatch = path.match(/\/chat\/([^/]+)$/);
+    if (chatIdMatch) {
+      setCurrentChatId(chatIdMatch[1]);
+    } else {
+      setCurrentChatId('');
+    }
+  }, [router]);
+
+  // Only fetch chats once when component mounts or user changes
   useEffect(() => {
     fetchChats();
-  }, [fetchChats]);
+  }, [isSignedIn, userId]); // Removed fetchChats dependency to prevent re-fetching
 
   // Handle chat operations
   const handleDeleteChat = async (chatId: string) => {
@@ -91,9 +104,9 @@ export function ChatHistory({
       });
       
       if (response.ok) {
-        setChats(chats.filter(chat => chat._id !== chatId));
+        setChats(prevChats => prevChats.filter(chat => chat._id !== chatId));
         if (currentChatId === chatId) {
-          onNewChat();
+          router.push('/chat');
         }
       }
     } catch (error) {
@@ -115,7 +128,7 @@ export function ChatHistory({
       });
 
       if (response.ok) {
-        setChats(chats.map(chat => 
+        setChats(prevChats => prevChats.map(chat => 
           chat._id === chatId 
             ? { ...chat, title: newTitle.trim() }
             : chat
@@ -137,13 +150,7 @@ export function ChatHistory({
     )
   );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-32">
-        <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
-      </div>
-    );
-  }
+
 
   return (
     <>
@@ -176,7 +183,7 @@ export function ChatHistory({
             {/* New Chat Button */}
             <div className="px-2 mb-1">
               <button
-                onClick={onNewChat}
+                onClick={() => router.push('/chat')}
                 className="flex items-center space-x-2 w-full px-2 py-1.5 text-[15px] hover:bg-white/10 rounded-lg transition-colors"
               >
                 <SquarePen className="w-4 h-4" />
@@ -229,7 +236,7 @@ export function ChatHistory({
         {/* Chat List */}
         {!isCollapsed && (
           <div className="flex-1 overflow-y-auto px-2">
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 relative">
               {chats.map((chat) => {
                 const isEditing = editingId === chat._id;
                 const isActive = currentChatId === chat._id;
@@ -243,7 +250,7 @@ export function ChatHistory({
                   >
                     <div
                       className="flex items-center justify-between px-2 py-1 cursor-pointer"
-                      onClick={() => !isEditing && onChatSelect(chat._id)}
+                      onClick={() => !isEditing && router.push(`/chat/${chat._id}`)}
                     >
                       <div className="flex-1 min-w-0">
                         {isEditing ? (
@@ -272,43 +279,37 @@ export function ChatHistory({
 
                       {/* Actions Dropdown */}
                       {!isEditing && (
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenDropdown(openDropdown === chat._id ? null : chat._id);
-                            }}
-                            className="p-1 hover:bg-white/10 rounded transition-colors"
-                          >
+                        <div 
+                          className="opacity-0 group-hover:opacity-100 transition-opacity ml-2 relative"
+                          onMouseEnter={(e) => {
+                            console.log('Hover enter for chat:', chat._id);
+                            
+                            // Calculate position relative to the button
+                            const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            const sidebarRect = (e.currentTarget as HTMLElement).closest('[data-sidebar]')?.getBoundingClientRect();
+                            
+                            if (buttonRect && sidebarRect) {
+                              setDropdownPosition({
+                                top: buttonRect.bottom - sidebarRect.top + 5,
+                                right: sidebarRect.right - buttonRect.left - 120
+                              });
+                            }
+                            
+                            setOpenDropdown(chat._id);
+                          }}
+                          onMouseLeave={() => {
+                            console.log('Hover leave for chat:', chat._id);
+                            // Small delay to allow moving to dropdown
+                            setTimeout(() => {
+                              if (!document.querySelector('.dropdown-menu:hover')) {
+                                setOpenDropdown(null);
+                              }
+                            }, 100);
+                          }}
+                        >
+                          <div className="p-1 hover:bg-white/10 rounded transition-colors">
                             <MoreHorizontal className="w-4 h-4 text-gray-400" />
-                          </button>
-
-                          {openDropdown === chat._id && (
-                            <div className="absolute right-0 top-8 bg-[#2f2f2f] border border-white/20 rounded-lg shadow-lg z-10 min-w-[120px]">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingId(chat._id);
-                                  setEditTitle(chat.title);
-                                  setOpenDropdown(null);
-                                }}
-                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors"
-                              >
-                                <Edit3 className="w-3 h-3" />
-                                <span>Rename</span>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteChat(chat._id);
-                                }}
-                                className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -323,6 +324,53 @@ export function ChatHistory({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Dropdown Menu - Rendered outside to avoid conflicts */}
+        {openDropdown && (
+          <div 
+            className="dropdown-menu absolute z-50 bg-[#2f2f2f] border border-white/20 rounded-lg shadow-lg min-w-[120px]"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              right: `${dropdownPosition.right}px`
+            }}
+            onMouseEnter={() => {
+              console.log('Dropdown hover enter');
+            }}
+            onMouseLeave={() => {
+              console.log('Dropdown hover leave');
+              setOpenDropdown(null);
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Rename clicked');
+                setEditingId(openDropdown);
+                setEditTitle(chats.find(c => c._id === openDropdown)?.title || '');
+                setOpenDropdown(null);
+              }}
+              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-white hover:bg-white/10 transition-colors text-left rounded-t-lg"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>Rename</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Delete clicked');
+                if (openDropdown) {
+                  handleDeleteChat(openDropdown);
+                }
+              }}
+              className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left rounded-b-lg"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>Delete</span>
+            </button>
           </div>
         )}
 
@@ -341,13 +389,7 @@ export function ChatHistory({
           </div>
         )}
 
-        {/* Click outside handler for dropdown */}
-        {openDropdown && (
-          <div
-            className="fixed inset-0 z-5"
-            onClick={() => setOpenDropdown(null)}
-          />
-        )}
+
       </div>
 
       {/* Search Modal */}
@@ -385,7 +427,7 @@ export function ChatHistory({
                       <button
                         key={chat._id}
                         onClick={() => {
-                          onChatSelect(chat._id);
+                          router.push(`/chat/${chat._id}`);
                           setShowSearchModal(false);
                           setSearchQuery('');
                         }}
@@ -409,4 +451,10 @@ export function ChatHistory({
       )}
     </>
   );
-}
+};
+
+// Memoize the component to prevent unnecessary re-renders
+export const ChatHistory = memo(ChatHistoryComponent, (prevProps, nextProps) => {
+  // Only re-render if isCollapsed changes - ignore everything else
+  return prevProps.isCollapsed === nextProps.isCollapsed;
+});

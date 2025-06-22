@@ -166,7 +166,10 @@ const PDFModal = ({ src, name, onClose }: { src: string; name: string; onClose: 
 export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: ChatInterfaceProps) {
   const [selectedModelId, setSelectedModelId] = useState<string>('gpt-4-turbo');
   const [selectedFiles, setSelectedFiles] = useState<UploadedFile[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string>(chatId || '');
+  const [currentChatId, setCurrentChatId] = useState<string>('');
+  
+  // Debug: Log chatId prop changes
+  console.log('ChatInterface render - chatId prop:', chatId, 'currentChatId:', currentChatId);
   const [models, setModels] = useState<any[]>([]);
   const [modalImage, setModalImage] = useState<{ src: string; alt: string } | null>(null);
   const [modalPdf, setModalPdf] = useState<{ src: string; name: string } | null>(null);
@@ -205,13 +208,13 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     onResponse: async (response) => {
       const newChatId = response.headers.get('x-chat-id');
       
-      if (newChatId) {
+      if (newChatId && !currentChatId) {
+        console.log('New chat created during streaming:', newChatId);
         latestChatIdRef.current = newChatId;
+        setCurrentChatId(newChatId);
         
-        if (!currentChatId) {
-          setCurrentChatId(newChatId);
-          onChatCreated?.(newChatId);
-        }
+        // Immediate smooth redirect for new chats
+        onChatCreated?.(newChatId);
       }
     },
     onFinish: async (message) => {
@@ -240,6 +243,8 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
       console.error('useChat onError:', error);
       setSelectedFiles([]);
     },
+    // Clear any previous messages for new chats
+    initialMessages: chatId ? undefined : [],
   });
 
   // Load models on mount
@@ -263,25 +268,38 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
     loadModels();
   }, [selectedModelId]);
 
-  // Load existing chat if chatId is provided
+  // Load existing chat if chatId is provided, or ensure clean state for new chats
   useEffect(() => {
     if (chatId && chatId !== currentChatId) {
+      console.log('Loading existing chat:', chatId);
       loadChat(chatId);
-    } else if (!chatId && currentChatId) {
+    } else if (!chatId) {
+      console.log('New chat mode - ensuring clean state');
+      // Ensure completely clean state for new chats
       setMessages([]);
       setCurrentChatId('');
       setSelectedFiles([]);
+      latestChatIdRef.current = null;
     }
-  }, [chatId, currentChatId]);
+  }, [chatId]);
 
   const loadChat = async (chatIdToLoad: string) => {
     try {
+      console.log('Fetching chat data from API:', chatIdToLoad);
       const response = await fetch(`/api/chats/${chatIdToLoad}`);
+      console.log('API response status:', response.status);
       if (response.ok) {
         const chatData = await response.json();
+        console.log('Chat data received:', { 
+          messagesCount: chatData.messages?.length || 0, 
+          title: chatData.title,
+          modelId: chatData.modelId 
+        });
         setMessages(chatData.messages || []);
         setSelectedModelId(chatData.modelId || 'gpt-4-turbo');
         setCurrentChatId(chatIdToLoad);
+      } else {
+        console.error('Failed to fetch chat:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Failed to load chat:', error);
