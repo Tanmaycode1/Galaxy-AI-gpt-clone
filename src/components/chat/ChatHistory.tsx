@@ -39,14 +39,14 @@ interface Chat {
 
 interface ChatHistoryProps {
   isCollapsed?: boolean;
-  sidebarWidth?: number;
   onCollapsedChange?: (collapsed: boolean) => void;
+  onMobileClose?: () => void;
 }
 
 const ChatHistoryComponent = function ChatHistory({ 
   isCollapsed = false, 
-  sidebarWidth = 260,
-  onCollapsedChange
+  onCollapsedChange,
+  onMobileClose
 }: ChatHistoryProps) {
   const { isSignedIn, userId } = useAuth();
   const router = useRouter();
@@ -160,20 +160,27 @@ const ChatHistoryComponent = function ChatHistory({
         }`} 
         style={{ fontFamily: 'Segoe UI, -apple-system, BlinkMacSystemFont, sans-serif' }}
       >
-        {/* Header - Just logo like original */}
+        {/* Header - Unified close/collapse */}
         <div className="flex items-center justify-between p-3 mb-3">
           <div className="flex items-center">
             <img src="/icons/favicon.ico" alt="Galaxy AI" className="w-7 h-7" />
           </div>
           <button 
             onClick={() => {
-              const newCollapsed = !isCollapsed;
-              onCollapsedChange?.(newCollapsed);
+              // Simple logic: if we're on mobile screen size, close sidebar
+              // Otherwise, toggle collapse
+              if (window.innerWidth < 768) {
+                onMobileClose?.();
+              } else {
+                const newCollapsed = !isCollapsed;
+                onCollapsedChange?.(newCollapsed);
+              }
             }}
             className="p-1 hover:bg-white/10 rounded-md transition-colors"
           >
+            {/* Always use X icon - same for mobile and desktop */}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -183,7 +190,10 @@ const ChatHistoryComponent = function ChatHistory({
             {/* New Chat Button */}
             <div className="px-2 mb-1">
               <button
-                onClick={() => router.push('/chat')}
+                onClick={() => {
+                  router.push('/chat');
+                  onMobileClose?.();
+                }}
                 className="flex items-center space-x-2 w-full px-2 py-1.5 text-[15px] hover:bg-white/10 rounded-lg transition-colors"
               >
                 <SquarePen className="w-4 h-4" />
@@ -250,7 +260,13 @@ const ChatHistoryComponent = function ChatHistory({
                   >
                     <div
                       className="flex items-center justify-between px-2 py-1 cursor-pointer"
-                      onClick={() => !isEditing && router.push(`/chat/${chat._id}`)}
+                      onClick={() => {
+                        if (!isEditing) {
+                          router.push(`/chat/${chat._id}`);
+                          // Close mobile sidebar when chat is selected
+                          onMobileClose?.();
+                        }
+                      }}
                     >
                       <div className="flex-1 min-w-0">
                         {isEditing ? (
@@ -430,6 +446,7 @@ const ChatHistoryComponent = function ChatHistory({
                           router.push(`/chat/${chat._id}`);
                           setShowSearchModal(false);
                           setSearchQuery('');
+                          onMobileClose?.();
                         }}
                         className="w-full text-left p-3 hover:bg-white/10 rounded-lg transition-colors"
                       >

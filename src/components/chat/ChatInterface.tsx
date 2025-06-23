@@ -744,8 +744,8 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
           paddingBottom: messages.length === 0 ? 0 : Math.max(inputAreaHeight + 32, 208) + 'px' 
         }}
       >
-        {messages.length === 0 ? (
-          /* Empty State */
+        {messages.length === 0 && !chatId ? (
+          /* Empty State - Only show for new chats */
           <div className="flex flex-col items-center justify-center h-full px-4 pb-64">
             <div className="text-center">
               <h1 className="text-2xl md:text-3xl font-normal text-gray-200 mb-8">
@@ -753,7 +753,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
               </h1>
             </div>
           </div>
-        ) : (
+        ) : messages.length > 0 ? (
           /* Messages */
           <div className="w-full">
             {messages.map((message, index) => {
@@ -1087,19 +1087,24 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
 
             <div ref={messagesEndRef} />
           </div>
+        ) : (
+          /* Empty existing chat - no messages UI, just empty space */
+          <div className="w-full">
+            <div ref={messagesEndRef} />
+          </div>
         )}
       </div>
 
       {/* Input Area */}
       <div className={`w-full bg-[#212121] ${
-        messages.length === 0 ? 'absolute bottom-1/2 left-0 right-0 transform translate-y-1/2' : 'absolute bottom-0 left-0 right-0'
+        messages.length === 0 && !chatId ? 'absolute bottom-1/2 left-0 right-0 transform translate-y-1/2' : 'absolute bottom-0 left-0 right-0'
       }`}>
         <div 
           ref={inputAreaRef}
           className="group w-full py-4 md:py-8 px-3 md:px-4 relative"
         >
-          <div className={`${
-            messages.length === 0 ? 'max-w-4xl' : 'max-w-3xl'
+                      <div className={`${
+            messages.length === 0 && !chatId ? 'max-w-4xl' : 'max-w-3xl'
           } mx-auto`}>
           <form onSubmit={onSubmit} className="w-full">
             <div className="bg-[#2f2f2f] rounded-[30px] p-4">
@@ -1196,7 +1201,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={messages.length === 0 ? "Ask anything" : "Message Galaxy AI"}
+                  placeholder={messages.length === 0 && !chatId ? "Ask anything" : "Message Galaxy AI"}
                   className="w-full bg-transparent text-white placeholder-gray-400 resize-none min-h-[24px] max-h-[200px] text-base leading-6"
                   rows={1}
                   disabled={isLoading}
