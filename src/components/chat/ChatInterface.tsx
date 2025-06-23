@@ -209,12 +209,10 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
       const newChatId = response.headers.get('x-chat-id');
       
       if (newChatId && !currentChatId) {
-        console.log('New chat created during streaming:', newChatId);
+        console.log('New chat created, ID received:', newChatId);
         latestChatIdRef.current = newChatId;
         setCurrentChatId(newChatId);
-        
-        // Immediate smooth redirect for new chats
-        onChatCreated?.(newChatId);
+        // DON'T redirect here - let user see the streaming first
       }
     },
     onFinish: async (message) => {
@@ -237,6 +235,14 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
         } catch (error) {
           console.error('Failed to save chat after streaming:', error);
         }
+      }
+
+      // Smooth redirect AFTER streaming is complete for new chats
+      if (latestChatIdRef.current && !chatId) {
+        console.log('Streaming complete, redirecting to new chat:', latestChatIdRef.current);
+        setTimeout(() => {
+          onChatCreated?.(latestChatIdRef.current!);
+        }, 1500); // 1.5 second delay to let user appreciate the response
       }
     },
     onError: (error) => {
