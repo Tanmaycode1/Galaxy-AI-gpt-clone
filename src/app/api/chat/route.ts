@@ -400,7 +400,7 @@ export async function POST(req: NextRequest) {
         
         if (!currentChatId) {
           // Create a new chat
-          const firstUserMessage = messagesWithAttachments.find(msg => msg.role === 'user');
+          const firstUserMessage = messages.find(msg => msg.role === 'user'); // Use original messages, not context-enhanced ones
           chatTitle = firstUserMessage 
             ? firstUserMessage.content.substring(0, 50).replace(/\n/g, ' ').trim()
             : 'New Chat';
@@ -412,7 +412,7 @@ export async function POST(req: NextRequest) {
           const newChat = new Chat({
             userId: authResult.userId,
             title: chatTitle,
-            messages: messagesWithAttachments.map(msg => ({
+            messages: messages.map(msg => ({ // Use original messages, not context-enhanced ones
               id: msg.id || `msg_${Date.now()}_${Math.random()}`,
               role: msg.role,
               content: msg.content,
@@ -430,8 +430,8 @@ export async function POST(req: NextRequest) {
           console.log('Created new chat with ID:', currentChatId);
         } else {
           // For existing chats, only append the last message (which is the new one)
-          // The useChat hook sends ALL messages, but we only want to save the newest one
-          const lastMessage = messagesWithAttachments[messagesWithAttachments.length - 1];
+          // Use original messages to avoid saving context messages
+          const lastMessage = messages[messages.length - 1]; // Use original messages, not context-enhanced ones
           
           if (lastMessage) {
             console.log('DEBUG: Appending last message to existing chat');
