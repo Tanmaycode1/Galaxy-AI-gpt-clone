@@ -358,19 +358,20 @@ export async function POST(req: NextRequest) {
     }));
 
     // Apply intelligent context management with cross-chat history
-    // BUT ONLY for existing chats - new chats should start clean
+    // Work for BOTH existing and new chats
     console.log(`Original messages count: ${messagesWithAttachments.length}`);
-    if (currentChatId) {
-      // Only apply context management for existing chats
+    if (authResult?.userId) {
+      // Apply context management for authenticated users (both new and existing chats)
+      console.log(`Applying context management for user: ${authResult.userId}`);
       messagesWithAttachments = await manageContextWithHistory(
         messagesWithAttachments, 
-        authResult?.userId || null, 
-        currentChatId
+        authResult.userId, 
+        currentChatId // null for new chats, chatId for existing chats
       );
-      console.log(`Context managed messages count for existing chat: ${messagesWithAttachments.length}`);
+      console.log(`✅ Context managed messages count: ${messagesWithAttachments.length}`);
     } else {
-      // For new chats, keep messages clean - no context injection
-      console.log(`New chat detected - keeping messages clean: ${messagesWithAttachments.length}`);
+      // For demo/unauthenticated users, keep messages clean
+      console.log(`Demo user - keeping messages clean: ${messagesWithAttachments.length}`);
     }
     
 
@@ -475,16 +476,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if we have attachments (images or PDFs) that need processing for the LLM
-    const hasAttachments = messagesWithAttachments.some((msg: any) => 
-      msg.attachments?.length > 0 && selectedModel.config.image
-    );
+    // Only process attachments from the LAST message (current user input), ignore context attachments
+    const lastMessage = messagesWithAttachments[messagesWithAttachments.length - 1];
+    const hasAttachments = lastMessage && (lastMessage as any).attachments?.length > 0 && selectedModel.config.image;
 
     if (hasAttachments && selectedModel.config.provider === 'openai') {
       // Use AI SDK with proper image format for OpenAI
       console.log('Using AI SDK with attachments for OpenAI');
       
-      const coreMessages = await Promise.all(messagesWithAttachments.map(async (msg) => {
-        if ((msg as any).attachments?.length > 0) {
+      const coreMessages = await Promise.all(messagesWithAttachments.map(async (msg, index) => {
+        // Only process attachments for the LAST message (current user input)
+        if (index === messagesWithAttachments.length - 1 && (msg as any).attachments?.length > 0) {
           const attachments = (msg as any).attachments;
           const content: any[] = [
             { type: "text", text: msg.content }

@@ -211,7 +211,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
       if (newChatId && !currentChatId) {
         console.log('New chat created, ID received:', newChatId);
         latestChatIdRef.current = newChatId;
-        setCurrentChatId(newChatId);
+          setCurrentChatId(newChatId);
         // DON'T redirect here - let user see the streaming first
       }
     },
@@ -1103,7 +1103,7 @@ export function ChatInterface({ user, isDemo = false, chatId, onChatCreated }: C
           ref={inputAreaRef}
           className="group w-full py-4 md:py-8 px-3 md:px-4 relative"
         >
-                      <div className={`${
+          <div className={`${
             messages.length === 0 && !chatId ? 'max-w-4xl' : 'max-w-3xl'
           } mx-auto`}>
           <form onSubmit={onSubmit} className="w-full">

@@ -24,11 +24,11 @@ export default function NewChatPage() {
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY !== 'your_clerk_publishable_key_here';
 
   return (
-    <ChatInterface 
-      user={hasValidClerkKeys && user ? user : null}
-      isDemo={!hasValidClerkKeys}
+          <ChatInterface 
+            user={hasValidClerkKeys && user ? user : null}
+            isDemo={!hasValidClerkKeys}
       chatId={undefined} // Always undefined for new chats
       onChatCreated={handleChatCreated}
-    />
+          />
   );
 } 

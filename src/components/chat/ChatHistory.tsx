@@ -172,8 +172,8 @@ const ChatHistoryComponent = function ChatHistory({
               if (window.innerWidth < 768) {
                 onMobileClose?.();
               } else {
-                const newCollapsed = !isCollapsed;
-                onCollapsedChange?.(newCollapsed);
+              const newCollapsed = !isCollapsed;
+              onCollapsedChange?.(newCollapsed);
               }
             }}
             className="p-1 hover:bg-white/10 rounded-md transition-colors"
@@ -325,7 +325,7 @@ const ChatHistoryComponent = function ChatHistory({
                         >
                           <div className="p-1 hover:bg-white/10 rounded transition-colors">
                             <MoreHorizontal className="w-4 h-4 text-gray-400" />
-                          </div>
+                            </div>
                         </div>
                       )}
                     </div>
