@@ -96,7 +96,7 @@ async function getOlderChatsContext(userId: string, currentChatId: string | null
       );
       
       // Take the most recent messages from this chat
-      const selectedFromChat = chatMessages.slice(0, allocatedSlots);
+      const selectedFromChat = chatMessages.slice(-allocatedSlots);
       sampledMessages.push(...selectedFromChat);
       
       console.log(`Chat "${chatMessages[0]?.chatTitle?.substring(0, 30)}...": ${selectedFromChat.length}/${chatMessages.length} messages`);
